@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Write},
+    io::{BufRead, Write},
     net::{TcpListener, TcpStream},
 };
 
@@ -23,20 +23,15 @@ fn main() -> std::io::Result<()> {
 }
 
 fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
-    let mut received: Vec<u8> = vec![];
-    let mut buffer = [0; 1024];
+    let mut reader = std::io::BufReader::new(&mut stream);
+    let request = reader.fill_buf()?.to_vec();
+    reader.consume(request.len());
 
-    loop {
-        let bytes_read = stream.read(&mut buffer)?;
-        received.extend_from_slice(&buffer[..bytes_read]);
+    let req = String::from_utf8_lossy(&request);
+    println!("Request:{}", &req);
 
-        if bytes_read < 1024 {
-            break;
-        }
-    }
-
-    println!("Response:{}", String::from_utf8_lossy(&received));
-    stream.write_all(&received)?;
+    stream.write_all(req.as_bytes())?;
+    stream.flush()?;
 
     Ok(())
 }
