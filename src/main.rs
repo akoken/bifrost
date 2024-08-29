@@ -1,3 +1,6 @@
+mod server;
+
+use server::Server;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -10,17 +13,21 @@ async fn main() -> std::io::Result<()> {
 
     println!("Listening on: {}", addr);
 
-    loop {
-        let (mut stream, _) = listener.accept().await?;
-        println!("New connection from {}", stream.peer_addr()?);
+    let server = Server::new(listener);
+    server.start().await?;
 
-        // Handle the connection here
-        tokio::spawn(async move {
-            if let Err(e) = handle_connection(&mut stream).await {
-                println!("An error occurred: {}", e);
-            }
-        });
-    }
+    Ok(())
+    //    loop {
+    //        let (mut stream, _) = listener.accept().await?;
+    //        println!("New connection from {}", stream.peer_addr()?);
+    //
+    //        // Handle the connection here
+    //        tokio::spawn(async move {
+    //            if let Err(e) = handle_connection(&mut stream).await {
+    //                println!("An error occurred: {}", e);
+    //            }
+    //        });
+    //    }
 }
 
 async fn handle_connection(stream: &mut TcpStream) -> std::io::Result<()> {
