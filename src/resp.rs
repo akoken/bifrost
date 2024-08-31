@@ -1,3 +1,5 @@
+use bytes::BytesMut;
+
 const STRING: char = '+';
 const ERROR: char = '-';
 const INTEGER: char = ':';
@@ -25,5 +27,15 @@ impl std::fmt::Display for RespError {
             RespError::InvalidBulkString(msg) => msg.as_str().fmt(f),
             RespError::InvalidSimpleString(msg) => msg.as_str().fmt(f),
         }
+    }
+}
+
+pub struct Resp {
+    buffer: BytesMut,
+}
+
+impl Resp {
+    pub fn new(buffer: BytesMut) -> Self {
+        Resp { buffer }
     }
 }
