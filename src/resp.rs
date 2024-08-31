@@ -39,6 +39,34 @@ impl Resp {
         Resp { buffer }
     }
 
+    fn parse_bulk_string(&mut self) -> Result<(RespType, usize), RespError> {
+        let (bulkstr_len, bytes_consumed) =
+            if let Some((data, len)) = Self::read_line(&self.buffer[1..]) {
+                let bulkstr_len = Self::parse_length(data)?;
+                (bulkstr_len, len + 1)
+            } else {
+                return Err(RespError::InvalidBulkString(String::from(
+                    "Invalid value for bulk string",
+                )));
+            };
+
+        let bulkstr_end_idx = bytes_consumed + bulkstr_len;
+        if bulkstr_end_idx >= self.buffer.len() {
+            return Err(RespError::InvalidBulkString(String::from(
+                "Invalid value for bulk string length",
+            )));
+        }
+
+        let bulkstr = String::from_utf8(self.buffer[bytes_consumed..bulkstr_end_idx].to_vec());
+
+        match bulkstr {
+            Ok(bs) => Ok((RespType::BulkString(bs), bulkstr_end_idx + 2)),
+            Err(_) => Err(RespError::InvalidBulkString(String::from(
+                "Bulk string value is not a valid UTF-8 string",
+            ))),
+        }
+    }
+
     fn read_line(buf: &[u8]) -> Option<(&[u8], usize)> {
         for i in 1..buf.len() {
             if buf[i - 1] == b'\r' && buf[i] == b'\n' {
