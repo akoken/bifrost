@@ -38,4 +38,30 @@ impl Resp {
     pub fn new(buffer: BytesMut) -> Self {
         Resp { buffer }
     }
+
+    fn read_line(buf: &[u8]) -> Option<(&[u8], usize)> {
+        for i in 1..buf.len() {
+            if buf[i - 1] == b'\r' && buf[i] == b'\n' {
+                return Some((&buf[0..(i - 1)], i + 1));
+            }
+        }
+
+        None
+    }
+
+    fn parse_length(buf: &[u8]) -> Result<usize, RespError> {
+        let utf8_str = String::from_utf8(buf.to_vec());
+        match utf8_str {
+            Ok(s) => {
+                let int = s.parse::<usize>();
+                match int {
+                    Ok(n) => Ok(n),
+                    Err(_) => Err(RespError::Other(String::from(
+                        "Invalid value for an integer",
+                    ))),
+                }
+            }
+            Err(_) => Err(RespError::Other(String::from("Invalid UTF-8 string"))),
+        }
+    }
 }
