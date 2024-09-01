@@ -26,6 +26,17 @@ impl RespType {
     }
 }
 
+impl PartialEq for RespType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (RespType::BulkString(a), RespType::BulkString(b)) => a == b,
+            (RespType::SimpleString(a), RespType::SimpleString(b)) => a == b,
+            (RespType::Error(a), RespType::Error(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum RespError {
     InvalidBulkString(String),
@@ -120,5 +131,45 @@ impl Resp {
             }
             Err(_) => Err(RespError::Other(String::from("Invalid UTF-8 string"))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_resp_eq(
+        result: Result<(RespType, usize), RespError>,
+        expected: RespType,
+        expected_pos: usize,
+    ) {
+        match result {
+            Ok((resp_type, pos)) => {
+                assert!(
+                    resp_type == expected,
+                    "RespType mismatch. Expected {:?}, got {:?}",
+                    expected,
+                    resp_type
+                );
+                assert_eq!(
+                    pos, expected_pos,
+                    "Position mismatch. Expected {}, got {}",
+                    expected_pos, pos
+                );
+            }
+            Err(e) => panic!("Expected Ok, got Err: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_parse_bulk_string() {
+        let mut resp = Resp::new(BytesMut::from("$5\r\nhello\r\n"));
+        assert_resp_eq(resp.parse(), RespType::BulkString("hello".to_string()), 11);
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        let mut resp = Resp::new(BytesMut::from("x5\r\nhello\r\n"));
+        assert!(resp.parse().is_err());
     }
 }
