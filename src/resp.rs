@@ -1,10 +1,10 @@
 use bytes::{Bytes, BytesMut};
 
-const STRING: char = '+';
-const ERROR: char = '-';
-const INTEGER: char = ':';
-const BULK: char = '$';
-const ARRAY: char = '*';
+const STRING: u8 = b'+';
+const ERROR: u8 = b'-';
+const INTEGER: u8 = b':';
+const BULK: u8 = b'$';
+const ARRAY: u8 = b'*';
 
 #[derive(Clone, Debug)]
 pub enum RespType {
@@ -53,7 +53,7 @@ impl Resp {
     }
 
     pub fn parse(&mut self) -> Result<(RespType, usize), RespError> {
-        let typ = self.buffer[0] as char;
+        let typ = self.buffer[0];
 
         println!("Type is:{}", &typ);
         println!(
