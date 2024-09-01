@@ -76,15 +76,7 @@ impl Resp {
     }
 
     pub fn parse(&mut self) -> Result<(RespType, usize), RespError> {
-        let typ = self.buffer[0];
-
-        println!("Type is:{}", &typ);
-        println!(
-            "Incoming data:{:?}",
-            String::from_utf8(self.buffer.to_vec())
-        );
-
-        match typ {
+        match self.buffer[0] {
             BULK => Self::parse_bulk_string(self),
             STRING => Self::parse_simple_string(self),
             _ => Err(RespError::Other(String::from("Invalid RESP data type!"))),
