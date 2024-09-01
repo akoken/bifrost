@@ -1,3 +1,5 @@
+use std::usize;
+
 use bytes::{Bytes, BytesMut};
 
 const STRING: u8 = b'+';
@@ -11,6 +13,7 @@ pub enum RespType {
     BulkString(String),
     SimpleString(String),
     Error(String),
+    Null,
 }
 
 impl RespType {
@@ -22,6 +25,7 @@ impl RespType {
                 Bytes::from_iter(bulkstr_bytes)
             }
             RespType::Error(es) => Bytes::from_iter(format!("-{}\r\n", es).into_bytes()),
+            RespType::Null => Bytes::from("$-1\r\n"),
         }
     }
 }
@@ -46,6 +50,8 @@ pub enum RespError {
     Incomplete,
     Other(String),
 }
+
+impl std::error::Error for RespError {}
 
 impl std::fmt::Display for RespError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -85,76 +91,50 @@ impl Resp {
         }
     }
 
-    fn parse_bulk_string(&mut self) -> Result<(RespType, usize), RespError> {
-        let (bulkstr_len, bytes_consumed) =
-            if let Some((data, len)) = Self::read_line(&self.buffer[1..]) {
-                let bulkstr_len = Self::parse_length(data)?;
-                (bulkstr_len, len + 1)
-            } else {
-                return Err(RespError::InvalidBulkString(String::from(
-                    "Invalid value for bulk string",
-                )));
-            };
-
-        let bulkstr_end_idx = bytes_consumed + bulkstr_len;
-        if bulkstr_end_idx >= self.buffer.len() {
-            return Err(RespError::InvalidBulkString(String::from(
-                "Invalid value for bulk string length",
-            )));
+    // $5\r\nhello\r\n
+    fn parse_bulk_string(&self) -> Result<(RespType, usize), RespError> {
+        let (str_length, mut len) = self.parse_integer_value(1)?;
+        if str_length == -1 {
+            return Ok((RespType::Null, len));
         }
 
-        let bulkstr = String::from_utf8(self.buffer[bytes_consumed..bulkstr_end_idx].to_vec());
-        println!("Bulkstring:{:?}", &bulkstr);
+        let str_length = str_length as usize;
 
-        match bulkstr {
-            Ok(bs) => Ok((RespType::BulkString(bs), bulkstr_end_idx + 2)),
-            Err(_) => Err(RespError::InvalidBulkString(String::from(
-                "Bulk string value is not a valid UTF-8 string",
-            ))),
+        if self.buffer.len() < len + str_length + 2 {
+            return Err(RespError::Incomplete);
         }
+
+        let string = String::from_utf8(self.buffer[len..len + str_length].to_vec())
+            .map_err(|_| RespError::InvalidBulkString("Invalid UTF-8".to_string()))?;
+
+        len += str_length + 2; // +2 for \r\n
+        Ok((RespType::BulkString(string), len))
     }
 
+    // +OK\r\n
     fn parse_simple_string(&self) -> Result<(RespType, usize), RespError> {
-        if let Some((line_buf, len)) = Self::read_line(&self.buffer[1..]) {
-            let line_utf8_str = String::from_utf8(line_buf.to_vec());
-
-            return match line_utf8_str {
-                Ok(str) => Ok((RespType::SimpleString(str), len + 1)),
-                Err(_) => Err(RespError::InvalidSimpleString(String::from(
-                    "Simple string has invalid UTF-8 format.",
-                ))),
-            };
-        }
-
-        Err(RespError::InvalidSimpleString(String::from(
-            "Simple string value is invalid.",
-        )))
+        let (line, len) = self.read_line(1)?;
+        Ok((RespType::SimpleString(line), len))
     }
 
-    fn read_line(buf: &[u8]) -> Option<(&[u8], usize)> {
-        for i in 1..buf.len() {
-            if buf[i - 1] == b'\r' && buf[i] == b'\n' {
-                return Some((&buf[0..(i - 1)], i + 1));
+    fn read_line(&self, start: usize) -> Result<(String, usize), RespError> {
+        for i in start + 1..self.buffer.len() {
+            if self.buffer[i - 1] == b'\r' && self.buffer[i] == b'\n' {
+                return Ok((
+                    String::from_utf8(self.buffer[start..i - 1].to_vec())
+                        .map_err(|_| RespError::InvalidSimpleString("Invalid UTF-8".to_string()))?,
+                    i + 1,
+                ));
             }
         }
-
-        None
+        Err(RespError::Incomplete)
     }
 
-    fn parse_length(buf: &[u8]) -> Result<usize, RespError> {
-        let utf8_str = String::from_utf8(buf.to_vec());
-        match utf8_str {
-            Ok(s) => {
-                let int = s.parse::<usize>();
-                match int {
-                    Ok(n) => Ok(n),
-                    Err(_) => Err(RespError::Other(String::from(
-                        "Invalid value for an integer",
-                    ))),
-                }
-            }
-            Err(_) => Err(RespError::Other(String::from("Invalid UTF-8 string"))),
-        }
+    fn parse_integer_value(&self, start: usize) -> Result<(i64, usize), RespError> {
+        let (line, pos) = self.read_line(start)?;
+        line.parse::<i64>()
+            .map_err(|_| RespError::InvalidInteger("Invalid integer format".to_string()))
+            .map(|value| (value, pos))
     }
 }
 
