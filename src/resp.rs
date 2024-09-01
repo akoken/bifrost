@@ -1,4 +1,4 @@
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 const STRING: char = '+';
 const ERROR: char = '-';
@@ -10,7 +10,20 @@ const ARRAY: char = '*';
 pub enum RespType {
     BulkString(String),
     SimpleString(String),
-    SimpleError(String),
+    Error(String),
+}
+
+impl RespType {
+    pub fn to_bytes(&self) -> Bytes {
+        match self {
+            RespType::SimpleString(ss) => Bytes::from_iter(format!("+{}\r\n", ss).into_bytes()),
+            RespType::BulkString(bs) => {
+                let bulkstr_bytes = format!("${}\r\n{}\r\n", bs.chars().count(), bs).into_bytes();
+                Bytes::from_iter(bulkstr_bytes)
+            }
+            RespType::Error(es) => Bytes::from_iter(format!("-{}\r\n", es).into_bytes()),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -39,6 +52,21 @@ impl Resp {
         Resp { buffer }
     }
 
+    pub fn parse(&mut self) -> Result<(RespType, usize), RespError> {
+        let typ = self.buffer[0] as char;
+
+        println!("Type is:{}", &typ);
+        println!(
+            "Incoming data:{:?}",
+            String::from_utf8(self.buffer.to_vec())
+        );
+
+        match typ {
+            BULK => Self::parse_bulk_string(self),
+            _ => Err(RespError::Other(String::from("Invalid RESP data type!"))),
+        }
+    }
+
     fn parse_bulk_string(&mut self) -> Result<(RespType, usize), RespError> {
         let (bulkstr_len, bytes_consumed) =
             if let Some((data, len)) = Self::read_line(&self.buffer[1..]) {
@@ -58,6 +86,7 @@ impl Resp {
         }
 
         let bulkstr = String::from_utf8(self.buffer[bytes_consumed..bulkstr_end_idx].to_vec());
+        println!("Bulkstring:{:?}", &bulkstr);
 
         match bulkstr {
             Ok(bs) => Ok((RespType::BulkString(bs), bulkstr_end_idx + 2)),
