@@ -74,6 +74,7 @@ impl Resp {
 
         match typ {
             BULK => Self::parse_bulk_string(self),
+            STRING => Self::parse_simple_string(self),
             _ => Err(RespError::Other(String::from("Invalid RESP data type!"))),
         }
     }
@@ -105,6 +106,23 @@ impl Resp {
                 "Bulk string value is not a valid UTF-8 string",
             ))),
         }
+    }
+
+    fn parse_simple_string(&self) -> Result<(RespType, usize), RespError> {
+        if let Some((line_buf, len)) = Self::read_line(&self.buffer[1..]) {
+            let line_utf8_str = String::from_utf8(line_buf.to_vec());
+
+            return match line_utf8_str {
+                Ok(str) => Ok((RespType::SimpleString(str), len + 1)),
+                Err(_) => Err(RespError::InvalidSimpleString(String::from(
+                    "Simple string has invalid UTF-8 format.",
+                ))),
+            };
+        }
+
+        Err(RespError::InvalidSimpleString(String::from(
+            "Simple string value is invalid.",
+        )))
     }
 
     fn read_line(buf: &[u8]) -> Option<(&[u8], usize)> {
@@ -165,6 +183,12 @@ mod tests {
     fn test_parse_bulk_string() {
         let mut resp = Resp::new(BytesMut::from("$5\r\nhello\r\n"));
         assert_resp_eq(resp.parse(), RespType::BulkString("hello".to_string()), 11);
+    }
+
+    #[test]
+    fn test_parse_simple_string() {
+        let mut resp = Resp::new(BytesMut::from("+OK\r\n"));
+        assert_resp_eq(resp.parse(), RespType::SimpleString("OK".to_string()), 5);
     }
 
     #[test]
