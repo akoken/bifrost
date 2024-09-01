@@ -1,3 +1,5 @@
+use crate::resp::{Resp, RespType};
+use bytes::BytesMut;
 use std::io::Result;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -24,24 +26,17 @@ impl Server {
             println!("New connection from {}", stream.peer_addr()?);
 
             tokio::spawn(async move {
-                let mut buffer = [0; 1024];
-                loop {
-                    match stream.read(&mut buffer).await {
-                        // Return value of `Ok(0)` signifies that the remote has
-                        // closed
-                        Ok(0) => {
-                            break;
-                        }
-                        Ok(n) => {
-                            println!("Received:{:?}", String::from_utf8_lossy(&buffer[..n]));
-                            if stream.write_all(&buffer[..n]).await.is_err() {
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            break;
-                        }
-                    }
+                let mut buffer = BytesMut::with_capacity(1024);
+                let _ = stream.read_buf(&mut buffer).await;
+
+                let mut parser = Resp::new(buffer);
+                let resp_data = match parser.parse() {
+                    Ok((data, _)) => data,
+                    Err(e) => RespType::Error(format!("{}", e)),
+                };
+
+                if let Err(e) = &mut stream.write_all(&resp_data.to_bytes()[..]).await {
+                    panic!("Error writing response: {}", e);
                 }
             });
         }
