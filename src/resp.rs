@@ -12,6 +12,7 @@ const ARRAY: u8 = b'*';
 pub enum RespType {
     BulkString(String),
     SimpleString(String),
+    Integer(i64),
     Error(String),
     Null,
 }
@@ -19,11 +20,12 @@ pub enum RespType {
 impl RespType {
     pub fn to_bytes(&self) -> Bytes {
         match self {
-            RespType::SimpleString(ss) => Bytes::from_iter(format!("+{}\r\n", ss).into_bytes()),
             RespType::BulkString(bs) => {
                 let bulkstr_bytes = format!("${}\r\n{}\r\n", bs.chars().count(), bs).into_bytes();
                 Bytes::from_iter(bulkstr_bytes)
             }
+            RespType::SimpleString(ss) => Bytes::from_iter(format!("+{}\r\n", ss).into_bytes()),
+            RespType::Integer(i) => Bytes::from(format!(":{}\r\n", i)),
             RespType::Error(es) => Bytes::from_iter(format!("-{}\r\n", es).into_bytes()),
             RespType::Null => Bytes::from("$-1\r\n"),
         }
@@ -35,6 +37,7 @@ impl PartialEq for RespType {
         match (self, other) {
             (RespType::BulkString(a), RespType::BulkString(b)) => a == b,
             (RespType::SimpleString(a), RespType::SimpleString(b)) => a == b,
+            (RespType::Integer(a), RespType::Integer(b)) => a == b,
             (RespType::Error(a), RespType::Error(b)) => a == b,
             _ => false,
         }
@@ -79,6 +82,7 @@ impl Resp {
         match self.buffer[0] {
             BULK => Self::parse_bulk_string(self),
             STRING => Self::parse_simple_string(self),
+            INTEGER => Self::parse_integer(self),
             _ => Err(RespError::Other(String::from("Invalid RESP data type!"))),
         }
     }
@@ -107,6 +111,11 @@ impl Resp {
     fn parse_simple_string(&self) -> Result<(RespType, usize), RespError> {
         let (line, len) = self.read_line(1)?;
         Ok((RespType::SimpleString(line), len))
+    }
+
+    fn parse_integer(&self) -> Result<(RespType, usize), RespError> {
+        let (value, len) = self.parse_integer_value(1)?;
+        Ok((RespType::Integer(value), len))
     }
 
     fn read_line(&self, start: usize) -> Result<(String, usize), RespError> {
@@ -167,6 +176,12 @@ mod tests {
     fn test_parse_simple_string() {
         let mut resp = Resp::new(BytesMut::from("+OK\r\n"));
         assert_resp_eq(resp.parse(), RespType::SimpleString("OK".to_string()), 5);
+    }
+
+    #[test]
+    fn test_parse_integer() {
+        let mut resp = Resp::new(BytesMut::from(":23\r\n"));
+        assert_resp_eq(resp.parse(), RespType::Integer(23), 5);
     }
 
     #[test]
