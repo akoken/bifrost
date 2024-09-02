@@ -1,5 +1,3 @@
-use std::usize;
-
 use bytes::{Bytes, BytesMut};
 
 const STRING: u8 = b'+';
@@ -120,6 +118,7 @@ impl Resp {
         Ok((RespType::Integer(value), len))
     }
 
+    // -Error message\r\n
     fn parse_error(&self) -> Result<(RespType, usize), RespError> {
         let (line, len) = self.read_line(1)?;
         Ok((RespType::Error(line), len))
