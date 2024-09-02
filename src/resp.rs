@@ -83,6 +83,7 @@ impl Resp {
             BULK => Self::parse_bulk_string(self),
             STRING => Self::parse_simple_string(self),
             INTEGER => Self::parse_integer(self),
+            ERROR => Self::parse_error(self),
             _ => Err(RespError::Other(String::from("Invalid RESP data type!"))),
         }
     }
@@ -113,9 +114,15 @@ impl Resp {
         Ok((RespType::SimpleString(line), len))
     }
 
+    // :23\r\n
     fn parse_integer(&self) -> Result<(RespType, usize), RespError> {
         let (value, len) = self.parse_integer_value(1)?;
         Ok((RespType::Integer(value), len))
+    }
+
+    fn parse_error(&self) -> Result<(RespType, usize), RespError> {
+        let (line, len) = self.read_line(1)?;
+        Ok((RespType::Error(line), len))
     }
 
     fn read_line(&self, start: usize) -> Result<(String, usize), RespError> {
@@ -182,6 +189,16 @@ mod tests {
     fn test_parse_integer() {
         let mut resp = Resp::new(BytesMut::from(":23\r\n"));
         assert_resp_eq(resp.parse(), RespType::Integer(23), 5);
+    }
+
+    #[test]
+    fn test_parse_error() {
+        let mut resp = Resp::new(BytesMut::from("-Error message\r\n"));
+        assert_resp_eq(
+            resp.parse(),
+            RespType::Error("Error message".to_string()),
+            16,
+        );
     }
 
     #[test]
