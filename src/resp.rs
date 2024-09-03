@@ -1,5 +1,3 @@
-use std::{array, collections::btree_map::IterMut, usize};
-
 use bytes::{Bytes, BytesMut};
 
 const STRING: u8 = b'+';
@@ -58,7 +56,6 @@ pub enum RespError {
     InvalidBulkString(String),
     InvalidSimpleString(String),
     InvalidInteger(String),
-    InvalidArray(String),
     Incomplete,
     Other(String),
 }
@@ -71,7 +68,6 @@ impl std::fmt::Display for RespError {
             RespError::InvalidBulkString(msg) => write!(f, "Invalid bulk string: {}", msg),
             RespError::InvalidSimpleString(msg) => write!(f, "Invalid simple string: {}", msg),
             RespError::InvalidInteger(msg) => write!(f, "Invalid integer: {}", msg),
-            RespError::InvalidArray(msg) => write!(f, "Invalid array: {}", msg),
             RespError::Incomplete => write!(f, "Incomplete RESP data"),
             RespError::Other(msg) => write!(f, "Other error: {}", msg),
         }
@@ -243,6 +239,12 @@ mod tests {
             RespType::Error("Error message".to_string()),
             16,
         );
+    }
+
+    #[test]
+    fn test_parse_null() {
+        let mut resp = Resp::new(BytesMut::from("$-1\r\n"));
+        assert_resp_eq(resp.parse(), RespType::Null, 5);
     }
 
     #[test]
