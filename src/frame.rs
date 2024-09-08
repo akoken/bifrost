@@ -1,55 +1,40 @@
-use std::fmt;
+use bytes::Buf;
+use bytes::BytesMut;
+use std::io;
+use tokio_util::codec::{Decoder, Encoder};
 
-use crate::resp::{RespError, RespType};
+use crate::resp::Resp;
+use crate::resp::RespError;
+use crate::resp::RespType;
 
-struct RespCommandFrame {
-    builder: Option<CommandBuilder>,
-}
+pub struct RespCodec;
 
-struct CommandBuilder {
-    parts: Vec<RespType>,
-    num_parts: usize,
-    parsed_parts: usize,
-}
+impl Decoder for RespCodec {
+    type Item = RespType;
+    type Error = io::Error;
 
-impl CommandBuilder {
-    pub fn new(num_parts: usize) -> CommandBuilder {
-        CommandBuilder {
-            parts: vec![],
-            num_parts,
-            parsed_parts: 0,
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.is_empty() {
+            return Ok(None);
+        }
+
+        let mut resp = Resp::new(src.clone());
+        match resp.parse() {
+            Ok((resp_type, consumed)) => {
+                src.advance(consumed);
+                Ok(Some(resp_type))
+            }
+            Err(RespError::Incomplete) => Ok(None),
+            Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string())),
         }
     }
-
-    pub fn add_part(&mut self, part: RespType) {
-        self.parts.push(part);
-        self.parsed_parts += 1;
-    }
-
-    pub fn all_parts_received(&self) -> bool {
-        self.num_parts == self.parsed_parts
-    }
-
-    pub fn build(&self) -> Vec<RespType> {
-        self.parts.clone()
-    }
 }
 
-#[derive(Debug)]
-pub struct FrameError {
-    err: RespError,
-}
+impl Encoder<RespType> for RespCodec {
+    type Error = io::Error;
 
-impl FrameError {
-    pub fn from(err: RespError) -> FrameError {
-        FrameError { err }
-    }
-}
-
-impl std::error::Error for FrameError {}
-
-impl fmt::Display for FrameError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.err.fmt(f)
+    fn encode(&mut self, item: RespType, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        dst.extend_from_slice(&item.to_bytes());
+        Ok(())
     }
 }

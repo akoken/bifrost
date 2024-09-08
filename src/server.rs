@@ -1,10 +1,8 @@
-use crate::resp::{Resp, RespType};
-use bytes::BytesMut;
-use std::io::Result;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use crate::{frame::RespCodec, resp::RespType};
+use futures::{SinkExt, StreamExt};
+use std::io;
+use tokio::net::{TcpListener, TcpStream};
+use tokio_util::codec::Framed;
 
 #[derive(Debug)]
 pub struct Server {
@@ -16,36 +14,63 @@ impl Server {
         Server { listener }
     }
 
-    pub async fn start(&self) -> Result<()> {
+    pub async fn start(&self) -> io::Result<()> {
         loop {
-            let mut stream = match self.accept_conn().await {
-                Ok(stream) => stream,
-                Err(_) => panic!("Connection Error"),
-            };
-
-            println!("New connection from {}", stream.peer_addr()?);
+            let (stream, addr) = self.listener.accept().await?;
+            println!("New connection from {}", addr);
 
             tokio::spawn(async move {
-                let mut buffer = BytesMut::with_capacity(1024);
-                let _ = stream.read_buf(&mut buffer).await;
-
-                let mut parser = Resp::new(buffer);
-                let resp_data = match parser.parse() {
-                    Ok((data, _)) => data,
-                    Err(e) => RespType::Error(format!("{}", e)),
-                };
-
-                if let Err(e) = &mut stream.write_all(&resp_data.to_bytes()[..]).await {
-                    panic!("Error writing response: {}", e);
+                if let Err(e) = handle_connection(stream).await {
+                    eprintln!("Error handling connection: {}", e);
                 }
             });
         }
     }
+}
 
-    pub async fn accept_conn(&self) -> Result<TcpStream> {
-        match self.listener.accept().await {
-            Ok((stream, _)) => Ok(stream),
-            Err(e) => Err(e),
+async fn handle_connection(stream: TcpStream) -> io::Result<()> {
+    let mut framed = Framed::new(stream, RespCodec);
+
+    while let Some(result) = framed.next().await {
+        match result {
+            Ok(request) => {
+                let response = process_request(request);
+                framed.send(response).await?;
+            }
+            Err(e) => {
+                eprintln!("Error decoding frame: {}", e);
+                let error_response = RespType::Error(format!("Error: {}", e));
+                framed.send(error_response).await?;
+            }
         }
+    }
+
+    Ok(())
+}
+
+fn process_request(request: RespType) -> RespType {
+    // Here you would implement your command processing logic
+    // For now, we'll just echo the request back
+    match request {
+        RespType::Array(array) => {
+            if let Some(RespType::BulkString(command)) = array.first() {
+                match command.to_uppercase().as_str() {
+                    "PING" => RespType::SimpleString("PONG".to_string()),
+                    "ECHO" => {
+                        if let Some(RespType::BulkString(message)) = array.get(1) {
+                            RespType::BulkString(message.clone())
+                        } else {
+                            RespType::Error(
+                                "ERR wrong number of arguments for 'echo' command".to_string(),
+                            )
+                        }
+                    }
+                    _ => RespType::Error("ERR unknown command".to_string()),
+                }
+            } else {
+                RespType::Error("ERR invalid request".to_string())
+            }
+        }
+        _ => RespType::Error("ERR invalid request".to_string()),
     }
 }
