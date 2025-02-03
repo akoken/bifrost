@@ -1,6 +1,7 @@
 mod frame;
 mod resp;
 mod server;
+mod storage;
 
 use server::Server;
 use tokio::net::TcpListener;
