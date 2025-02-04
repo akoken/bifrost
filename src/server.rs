@@ -1,5 +1,7 @@
 use crate::storage::db::Db;
 use crate::{frame::RespCodec, resp::RespType};
+use crate::parser::parse_command;
+use crate::error::BifrostError;
 
 use futures::{SinkExt, StreamExt};
 use std::io;
@@ -57,82 +59,13 @@ async fn handle_connection(stream: TcpStream, db: &Arc<Db>) -> io::Result<()> {
 }
 
 fn process_request(request: RespType, db: &Db) -> RespType {
-    match request {
-        RespType::Array(array) => {
-            if let Some(RespType::BulkString(command)) = array.first() {
-                match command.to_uppercase().as_str() {
-                    "PING" => RespType::SimpleString("PONG".to_string()),
-                    "ECHO" => {
-                        if let Some(message) = array.get(1) {
-                            message.clone()
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'echo' command".to_string(),
-                            )
-                        }
-                    }
-                    "GET" => {
-                        if let Some(RespType::BulkString(key)) = array.get(1) {
-                            db.get(key).unwrap_or(RespType::Null)
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'get' command".to_string(),
-                            )
-                        }
-                    }
-                    "SET" => {
-                        if let (Some(RespType::BulkString(key)), Some(value)) =
-                            (array.get(1), array.get(2))
-                        {
-                            db.set(key.clone(), value.clone())
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'set' command".to_string(),
-                            )
-                        }
-                    }
-                    "DEL" => {
-                        if let Some(RespType::BulkString(key)) = array.get(1) {
-                            db.del(key)
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'del' command".to_string(),
-                            )
-                        }
-                    }
-                    "EXISTS" => {
-                        if let Some(RespType::BulkString(key)) = array.get(1) {
-                            db.exists(key)
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'exists' command".to_string(),
-                            )
-                        }
-                    }
-                    "INCR" => {
-                        if let Some(RespType::BulkString(key)) = array.get(1) {
-                            db.incr(key)
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'incr' command".to_string(),
-                            )
-                        }
-                    }
-                    "DECR" => {
-                        if let Some(RespType::BulkString(key)) = array.get(1) {
-                            db.decr(key)
-                        } else {
-                            RespType::Error(
-                                "ERR wrong number of arguments for 'decr' command".to_string(),
-                            )
-                        }
-                    }
-                    _ => RespType::Error("ERR unknown command".to_string()),
-                }
-            } else {
-                RespType::Error("ERR invalid request".to_string())
-            }
+    match parse_command(request) {
+        Ok(command) => command.execute(db),
+        Err(err) => match err {
+            BifrostError::CommandError(msg) | 
+            BifrostError::StorageError(msg) |
+            BifrostError::ProtocolError(msg) => RespType::Error(msg),
+            BifrostError::IoError(e) => RespType::Error(format!("ERR {}", e)),
         }
-        _ => RespType::Error("ERR invalid request".to_string()),
     }
 }

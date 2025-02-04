@@ -1,4 +1,7 @@
+mod commands;
+mod error;
 mod frame;
+mod parser;
 mod resp;
 mod server;
 mod storage;
