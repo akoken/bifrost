@@ -6,7 +6,7 @@ const INTEGER: u8 = b':';
 const BULK: u8 = b'$';
 const ARRAY: u8 = b'*';
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RespType {
     BulkString(String),
     SimpleString(String),
@@ -243,8 +243,9 @@ mod tests {
 
     #[test]
     fn test_parse_null() {
-        let mut resp = Resp::new(BytesMut::from("$-1\r\n"));
-        assert_resp_eq(resp.parse(), RespType::Null, 5);
+        let input = "$-1\r\n";
+        let result = parse_resp(input).unwrap();
+        assert_eq!(result, RespType::Null);
     }
 
     #[test]
