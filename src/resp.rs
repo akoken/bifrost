@@ -38,19 +38,6 @@ impl RespType {
     }
 }
 
-impl PartialEq for RespType {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (RespType::BulkString(a), RespType::BulkString(b)) => a == b,
-            (RespType::SimpleString(a), RespType::SimpleString(b)) => a == b,
-            (RespType::Integer(a), RespType::Integer(b)) => a == b,
-            (RespType::Array(a), RespType::Array(b)) => a == b,
-            (RespType::Error(a), RespType::Error(b)) => a == b,
-            _ => false,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum RespError {
     InvalidBulkString(String),
@@ -243,9 +230,8 @@ mod tests {
 
     #[test]
     fn test_parse_null() {
-        let input = "$-1\r\n";
-        let result = parse_resp(input).unwrap();
-        assert_eq!(result, RespType::Null);
+        let mut resp = Resp::new(BytesMut::from("$-1\r\n"));
+        assert_resp_eq(resp.parse(), RespType::Null, 5);
     }
 
     #[test]
