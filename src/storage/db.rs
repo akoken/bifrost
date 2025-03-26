@@ -63,19 +63,21 @@ impl Db {
         }
     }
 
-    pub fn decr(&self, key: &str) -> RespType {
+    pub fn decr(&self, key: &str) -> Result<RespType, BifrostError> {
         let mut data = self.data.write();
 
         match data.get(key) {
             Some(RespType::Integer(value)) => {
                 let new_value = value - 1;
                 data.insert(key.to_string(), RespType::Integer(new_value));
-                RespType::Integer(new_value)
+                Ok(RespType::Integer(new_value))
             }
-            Some(_) => RespType::Error("ERR value is not an integer".to_string()),
+            Some(_) => Err(BifrostError::StorageError(
+                "ERR value is not an integer".to_string()
+            )),
             None => {
                 data.insert(key.to_string(), RespType::Integer(-1));
-                RespType::Integer(-1)
+                Ok(RespType::Integer(-1))
             }
         }
     }
@@ -125,7 +127,7 @@ mod tests {
         assert_eq!(db.incr("counter").unwrap(), RespType::Integer(2));
 
         // Test DECR
-        assert_eq!(db.decr("counter"), RespType::Integer(1));
-        assert_eq!(db.decr("counter"), RespType::Integer(0));
+        assert_eq!(db.decr("counter").unwrap(), RespType::Integer(1));
+        assert_eq!(db.decr("counter").unwrap(), RespType::Integer(0));
     }
 }
